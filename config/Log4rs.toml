@@ -1,0 +1,14 @@
+refresh_rate = 30
+
+[appender.stdout]
+kind = "console"
+pattern = "[%d{%T}] [%T:%l] %m (%M:%L)"
+
+[appender.fsout]
+kind = "file"
+path = "logs/default.log"
+pattern = "[%d] [%T:%l] %m (%M:%L)"
+
+[root]
+level = "debug"
+appenders = ["stdout", "fsout"]

@@ -1,0 +1,12 @@
+[package]
+name = "boiler"
+version = "0.1.0"
+authors = ["Layl <LaylConway@users.noreply.github.com>"]
+
+[dependencies]
+byteorder = "0.4"
+enum_primitive = "0.1"
+log = "0.3"
+mio = "0.5"
+num = "0.1"
+rand = "0.3"

@@ -1,0 +1,11 @@
+[package]
+name = "a-bucket-bot"
+version = "0.1.0"
+authors = ["Layl <LaylConway@users.noreply.github.com>"]
+
+[dependencies]
+log = "0.3"
+log4rs = "0.3"
+
+[dependencies.boiler]
+path = "./boiler"
