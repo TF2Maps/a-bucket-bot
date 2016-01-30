@@ -9,4 +9,4 @@ mod connection;
 mod steam_data;
 
 pub use connection::{SteamConnection, Message};
-pub use steam_data::{MsgHdr, MsgHdrProtoBuf, ExtendedClientMsgHdr};
+pub use steam_data::{MsgHdr, MsgHdrProtoBuf, ExtendedClientMsgHdr, MessageHeader};

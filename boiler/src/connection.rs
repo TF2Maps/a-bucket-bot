@@ -6,6 +6,7 @@ use mio::tcp::TcpStream;
 use steam_data::MessageHeader;
 use std::sync::mpsc::{self, Sender, Receiver};
 
+/// A message to be sent to or received from a steam server.
 #[derive(Debug)]
 pub struct Message {
     pub header: MessageHeader,
@@ -74,12 +75,15 @@ impl SteamConnectionRuntime {
     }
 }
 
+/// A token to interact with a steam connection. Used to receive and send messages from and to a
+/// steam server.
 pub struct SteamConnection {
     runtime: JoinHandle<()>,
     msg_receiver: Receiver<Message>
 }
 
 impl SteamConnection {
+    /// Connects to a steam server. Aquires the server it should connect to automatically.
     pub fn connect() -> Self {
         // Set up the channels to send messages through
         let (sender, receiver) = mpsc::channel();
@@ -99,10 +103,13 @@ impl SteamConnection {
         }
     }
 
+    /// Returns a reference to the message receiver associated with this connection. Can be used to
+    /// receive messages.
     pub fn messages(&mut self) -> &mut Receiver<Message> {
         &mut self.msg_receiver
     }
 
+    /// Blocks until this connection has been closed.
     pub fn wait_close(self) {
         self.runtime.join().unwrap();
     }

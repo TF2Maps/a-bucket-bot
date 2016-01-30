@@ -86,6 +86,7 @@ impl ExtendedClientMsgHdr {
     }
 }
 
+/// A header of a message to be sent to or received from a server. Can be one of three header types.
 #[derive(Debug)]
 pub enum MessageHeader {
     MsgHdr(MsgHdr),
