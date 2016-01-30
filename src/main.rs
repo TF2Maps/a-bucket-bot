@@ -9,9 +9,13 @@ fn main() {
     // Start the client
     let mut client = boiler::SteamConnection::connect();
 
-    // Loop waiting for events
-    for message in client.messages().iter() {
+    // Loop over events that get sent to us
+    loop {
+        let message = client.messages().recv().unwrap();
+
         debug!("Message: {:?}", message);
+        client.disconnect();
+        break;
     }
 
     client.wait_close();

@@ -119,3 +119,10 @@ impl MessageHeader {
         }
     }
 }
+
+/// A message to be sent to or received from a steam server.
+#[derive(Debug)]
+pub struct Message {
+    pub header: MessageHeader,
+    pub body: Vec<u8>
+}

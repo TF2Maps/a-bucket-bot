@@ -8,5 +8,5 @@ extern crate rand;
 mod connection;
 mod steam_data;
 
-pub use connection::{SteamConnection, Message};
-pub use steam_data::{MsgHdr, MsgHdrProtoBuf, ExtendedClientMsgHdr, MessageHeader};
+pub use connection::{SteamConnection};
+pub use steam_data::{MsgHdr, MsgHdrProtoBuf, ExtendedClientMsgHdr, MessageHeader, Message};

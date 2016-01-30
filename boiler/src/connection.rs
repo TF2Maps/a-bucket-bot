@@ -3,14 +3,11 @@ use std::io::{Read, Cursor};
 use byteorder::{ReadBytesExt, LittleEndian};
 use mio::{Handler, EventLoop, Token, EventSet, PollOpt};
 use mio::tcp::TcpStream;
-use steam_data::MessageHeader;
+use steam_data::{MessageHeader, Message};
 use std::sync::mpsc::{self, Sender, Receiver};
 
-/// A message to be sent to or received from a steam server.
-#[derive(Debug)]
-pub struct Message {
-    pub header: MessageHeader,
-    pub body: Vec<u8>
+enum SteamConnectionEvent {
+    Shutdown
 }
 
 struct SteamConnectionRuntime {
@@ -20,7 +17,7 @@ struct SteamConnectionRuntime {
 
 impl Handler for SteamConnectionRuntime {
     type Timeout = ();
-    type Message = ();
+    type Message = SteamConnectionEvent;
 
     fn ready(&mut self, _event_loop: &mut EventLoop<SteamConnectionRuntime>, _token: Token, events: EventSet) {
         trace!("Handling ready() event...");
@@ -53,6 +50,13 @@ impl Handler for SteamConnectionRuntime {
             debug!("Received unhandled event type");
         }
     }
+
+    fn notify(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>, _evt: SteamConnectionEvent) {
+        trace!("Handling notify() event...");
+
+        debug!("Shutting down event loop...");
+        event_loop.shutdown();
+    }
 }
 
 impl SteamConnectionRuntime {
@@ -79,27 +83,33 @@ impl SteamConnectionRuntime {
 /// steam server.
 pub struct SteamConnection {
     runtime: JoinHandle<()>,
-    msg_receiver: Receiver<Message>
+    msg_receiver: Receiver<Message>,
+    evt_sender: ::mio::Sender<SteamConnectionEvent>
 }
 
 impl SteamConnection {
     /// Connects to a steam server. Aquires the server it should connect to automatically.
     pub fn connect() -> Self {
         // Set up the channels to send messages through
-        let (sender, receiver) = mpsc::channel();
+        let (msg_sender, msg_receiver) = mpsc::channel();
+
+        // Set up the event loop and get the event sender from it
+        let event_loop = EventLoop::new().unwrap();
+        let evt_sender = event_loop.channel();
 
         // Start the runtime
         let handle = thread::Builder::new()
             .name("boiler-runtime".into())
             .spawn(move || {
-                Self::client_runtime(sender);
+                Self::client_runtime(event_loop, msg_sender);
             })
             .unwrap();
 
         // Return the token that keeps track of the runtime
         SteamConnection {
             runtime: handle,
-            msg_receiver: receiver
+            msg_receiver: msg_receiver,
+            evt_sender: evt_sender
         }
     }
 
@@ -109,20 +119,23 @@ impl SteamConnection {
         &mut self.msg_receiver
     }
 
+    /// Disconnects this connection.
+    pub fn disconnect(&mut self) {
+        debug!("Sending disconnect event to runtime...");
+        self.evt_sender.send(SteamConnectionEvent::Shutdown).unwrap();
+    }
+
     /// Blocks until this connection has been closed.
     pub fn wait_close(self) {
         self.runtime.join().unwrap();
     }
 
-    fn client_runtime(msg_sender: Sender<Message>) {
+    fn client_runtime(mut event_loop: EventLoop<SteamConnectionRuntime>, msg_sender: Sender<Message>) {
         // Get a server to connect to
         // TODO: Take one address from a list of many
         // TODO: Actually fetch a server using the API
         let server_addr = "72.165.61.185:27017".parse().unwrap();
         info!("Connecting to {}", server_addr);
-
-        // Create an event loop
-        let mut event_loop = EventLoop::new().unwrap();
 
         // Start the connection to the server
         let stream = TcpStream::connect(&server_addr).unwrap();
