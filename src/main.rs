@@ -1,6 +1,12 @@
 extern crate boiler;
+extern crate byteorder;
+extern crate crc;
 #[macro_use] extern crate log;
 extern crate log4rs;
+
+use std::io::{Cursor, Write};
+use byteorder::{WriteBytesExt, LittleEndian};
+use crc::{crc32, Hasher32};
 
 fn main() {
     // Set up logging
@@ -9,14 +15,38 @@ fn main() {
     // Start the client
     let mut client = boiler::SteamConnection::connect();
 
-    // Loop over events that get sent to us
+    // Loop over messages that get sent to us
     loop {
+        // Get a message
         let message = client.messages().recv().unwrap();
 
-        debug!("Message: {:?}", message);
-        client.disconnect();
-        break;
+        // Handle what message we got
+        match message.header.emsg()  {
+            boiler::EMsg::ChannelEncryptRequest => {
+                // We got asked for encryption, handle that
+                debug!("Building encryption request response...");
+
+                // TODO: Verify protocol version and universe
+
+                // Generate the keys
+                let key = boiler::crypto::generate_key();
+                let encrypted_key = boiler::crypto::encrypt_key(&key);
+                let crc = crc32::checksum_ieee(&encrypted_key);
+
+                // Push them into a buffer to send
+                let body: Vec<u8> = Vec::new();
+                let mut body_c = Cursor::new(body);
+                body_c.write_u32::<LittleEndian>(1).unwrap(); // Protocol version
+                body_c.write_u32::<LittleEndian>(128).unwrap(); // Key size in ??? (key is 32 bytes)
+                body_c.write(&encrypted_key).unwrap(); // The actual encrypted key
+                body_c.write_u32::<LittleEndian>(crc).unwrap(); // Key checksum
+                body_c.write_u32::<LittleEndian>(0).unwrap() // Trailer (TODO: no idea what this is)
+
+                // TODO: Send the message
+            },
+            _ => {}
+        }
     }
 
-    client.wait_close();
+    //client.wait_close();
 }

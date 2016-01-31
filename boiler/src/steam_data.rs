@@ -7,7 +7,7 @@ use num::FromPrimitive;
 const PROTO_MASK: u32 = 0x80000000;
 
 enum_from_primitive! {
-    #[derive(Debug, PartialEq)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
     pub enum EMsg {
         ChannelEncryptRequest = 1303,
     	ChannelEncryptResponse = 1304,
@@ -116,6 +116,15 @@ impl MessageHeader {
         }
         else {
             MessageHeader::ExtendedClientMsgHdr(ExtendedClientMsgHdr::parse(data))
+        }
+    }
+
+    /// Gets the EMsg of the inner header type.
+    pub fn emsg(&self) -> EMsg {
+        match *self {
+            MessageHeader::MsgHdr(ref h) => h.msg,
+            MessageHeader::MsgHdrProtoBuf(_) => unimplemented!(),
+            MessageHeader::ExtendedClientMsgHdr(_) => unimplemented!(),
         }
     }
 }

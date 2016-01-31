@@ -4,6 +4,8 @@ version = "0.1.0"
 authors = ["Layl <LaylConway@users.noreply.github.com>"]
 
 [dependencies]
+byteorder = "0.4"
+crc = "1.2"
 log = "0.3"
 log4rs = "0.3"
 
