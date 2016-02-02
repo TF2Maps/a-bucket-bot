@@ -1,81 +1,116 @@
 use std::thread::{self, JoinHandle};
-use std::io::{Read, Cursor};
-use byteorder::{ReadBytesExt, LittleEndian};
+use std::io::{Read, Write, Cursor};
+use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use mio::{Handler, EventLoop, Token, EventSet, PollOpt};
 use mio::tcp::TcpStream;
-use steam_data::{MessageHeader, Message};
+use steam_data::Message;
 use std::sync::mpsc::{self, Sender, Receiver};
 
 enum SteamConnectionEvent {
-    Shutdown
+    Shutdown,
+    SendMessage(Message)
 }
 
 struct SteamConnectionRuntime {
     stream: TcpStream,
-    msg_sender: Sender<Message>
+    token: Token,
+    event_set: EventSet,
+    msg_sender: Sender<Message>,
+    queued_messages: Vec<Message>
 }
 
 impl Handler for SteamConnectionRuntime {
     type Timeout = ();
     type Message = SteamConnectionEvent;
 
-    fn ready(&mut self, _event_loop: &mut EventLoop<SteamConnectionRuntime>, _token: Token, events: EventSet) {
-        trace!("Handling ready() event...");
+    fn ready(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>, _token: Token, events: EventSet) {
+        debug!("Handling ready() event with EventSet {:?}...", events);
 
         if events.is_readable() {
-            trace!("Received connection readable event");
-
-            // Read in the header for this packet
-            let mut header = vec![0u8; 8];
-            self.stream.read(&mut header).unwrap();
-            let mut header_c = Cursor::new(header);
-            let length = header_c.read_u32::<LittleEndian>().unwrap();
-
-            // Sanity check
-            let magic = header_c.read_u32::<LittleEndian>().unwrap();
-            if magic != 0x31305456 {
-                panic!("Invalid magic, you are not connecting to a steam server");
-            }
-
-            // Read in the actual data
-            let mut data = vec![0u8; length as usize];
-            self.stream.read(&mut data).unwrap();
-
-            // TODO: decrypt the data here if encryption is on
-
-            // Handle the packet of data we've prepared
-            self.handle_packet(&data);
+            self.readable();
         }
-        else {
-            debug!("Received unhandled event type");
+
+        if events.is_writable() {
+            self.writeable(event_loop);
         }
     }
 
-    fn notify(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>, _evt: SteamConnectionEvent) {
+    fn notify(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>, event: SteamConnectionEvent) {
         trace!("Handling notify() event...");
 
-        debug!("Shutting down event loop...");
-        event_loop.shutdown();
+        match event {
+            SteamConnectionEvent::SendMessage(msg) => {
+                debug!("Received message for sending");
+                self.queued_messages.push(msg);
+                self.event_set.insert(EventSet::writable());
+                event_loop
+                    .reregister(&self.stream, self.token, self.event_set, PollOpt::edge())
+                    .unwrap();
+            }
+            SteamConnectionEvent::Shutdown => {
+                debug!("Shutting down event loop...");
+                event_loop.shutdown();
+            }
+        }
     }
 }
 
 impl SteamConnectionRuntime {
-    fn handle_packet(&mut self, data: &Vec<u8>) {
-        let mut data_c = Cursor::new(data);
+    fn readable(&mut self) {
+        trace!("Received connection readable event");
 
-        // Parse in the header
-        let header = MessageHeader::parse(&mut data_c);
+        // Read in the packet header
+        let mut header = vec![0u8; 8];
+        self.stream.read(&mut header).unwrap();
+        let mut header_c = Cursor::new(header);
+        let length = header_c.read_u32::<LittleEndian>().unwrap();
 
-        // Get the remaining data
-        let mut body = Vec::new();
-        data_c.read_to_end(&mut body).unwrap();
+        // Sanity check
+        let magic = header_c.read_u32::<LittleEndian>().unwrap();
+        if magic != 0x31305456 {
+            debug!("Data for following panic: {} {}", length, magic);
+            panic!("Invalid magic, you are not connecting to a steam server");
+        }
 
-        // Move the message into the channel so people can handle it
-        let msg = Message {
-            header: header,
-            body: body
-        };
+        // Read in the actual data
+        let mut data = vec![0u8; length as usize];
+        self.stream.read(&mut data).unwrap();
+
+        // TODO: decrypt the data here if encryption is on
+
+        // Turn the data into a message and send it over
+        let msg = Message::parse(&mut Cursor::new(&data));
         self.msg_sender.send(msg).unwrap();
+    }
+
+    fn writeable(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>) {
+        // Go over all queued messages
+        for msg in &self.queued_messages {
+            debug!("Sending queued message...");
+
+            // TODO: Perhaps send this all at once? See if it improves performance later.
+            // TODO: Pre-estimate the packet size needed.
+            let packet: Vec<u8> = Vec::new();
+            let mut packet_c = Cursor::new(packet);
+
+            // Turn the message into data
+            let msg_data = msg.into_bytes();
+
+            // Write the packet header and the message to the data
+            packet_c.write_u32::<LittleEndian>(msg_data.len() as u32).unwrap(); // Msg length
+            packet_c.write_u32::<LittleEndian>(0x31305456).unwrap(); // Magic
+            packet_c.write(&msg_data).unwrap();
+
+            // Send the message finally
+            self.stream.write(&packet_c.into_inner()).unwrap();
+        }
+
+        // Now that all of those are sent, clear the list and stop asking for writeable
+        self.queued_messages.clear();
+        self.event_set.remove(EventSet::writable());
+        event_loop
+            .reregister(&self.stream, self.token, self.event_set, PollOpt::edge())
+            .unwrap();
     }
 }
 
@@ -83,46 +118,50 @@ impl SteamConnectionRuntime {
 /// steam server.
 pub struct SteamConnection {
     runtime: JoinHandle<()>,
-    msg_receiver: Receiver<Message>,
-    evt_sender: ::mio::Sender<SteamConnectionEvent>
+    incoming_receiver: Receiver<Message>,
+    event_sender: ::mio::Sender<SteamConnectionEvent>
 }
 
 impl SteamConnection {
     /// Connects to a steam server. Aquires the server it should connect to automatically.
     pub fn connect() -> Self {
         // Set up the channels to send messages through
-        let (msg_sender, msg_receiver) = mpsc::channel();
+        let (incoming_sender, incoming_receiver) = mpsc::channel();
 
         // Set up the event loop and get the event sender from it
         let event_loop = EventLoop::new().unwrap();
-        let evt_sender = event_loop.channel();
+        let event_sender = event_loop.channel();
 
         // Start the runtime
         let handle = thread::Builder::new()
             .name("boiler-runtime".into())
             .spawn(move || {
-                Self::client_runtime(event_loop, msg_sender);
+                Self::client_runtime(event_loop, incoming_sender);
             })
             .unwrap();
 
         // Return the token that keeps track of the runtime
         SteamConnection {
             runtime: handle,
-            msg_receiver: msg_receiver,
-            evt_sender: evt_sender
+            incoming_receiver: incoming_receiver,
+            event_sender: event_sender,
         }
     }
 
-    /// Returns a reference to the message receiver associated with this connection. Can be used to
-    /// receive messages.
-    pub fn messages(&mut self) -> &mut Receiver<Message> {
-        &mut self.msg_receiver
+    /// Blocks until a single message has been received, then returns it.
+    pub fn recv(&mut self) -> Message {
+        self.incoming_receiver.recv().unwrap()
+    }
+
+    /// Queues up a single message for sending.
+    pub fn send(&mut self, message: Message) {
+        self.event_sender.send(SteamConnectionEvent::SendMessage(message)).unwrap();
     }
 
     /// Disconnects this connection.
     pub fn disconnect(&mut self) {
         debug!("Sending disconnect event to runtime...");
-        self.evt_sender.send(SteamConnectionEvent::Shutdown).unwrap();
+        self.event_sender.send(SteamConnectionEvent::Shutdown).unwrap();
     }
 
     /// Blocks until this connection has been closed.
@@ -139,16 +178,17 @@ impl SteamConnection {
 
         // Start the connection to the server
         let stream = TcpStream::connect(&server_addr).unwrap();
+        let event_set = EventSet::readable();
         let token = Token(0);
-        event_loop.register(
-                &stream, token, EventSet::readable(),
-                PollOpt::edge()
-            ).unwrap();
+        event_loop.register(&stream, token, event_set, PollOpt::edge()).unwrap();
 
         // Run the event loop
         let mut runtime = SteamConnectionRuntime {
             stream: stream,
-            msg_sender: msg_sender
+            token: token,
+            event_set: event_set,
+            msg_sender: msg_sender,
+            queued_messages: Vec::new()
         };
         event_loop.run(&mut runtime).unwrap();
     }

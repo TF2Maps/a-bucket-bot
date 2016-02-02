@@ -1,7 +1,7 @@
 //! TODO: Auto-generate
 
-use std::io::Cursor;
-use byteorder::{ReadBytesExt, LittleEndian};
+use std::io::{Cursor, Read, Write};
+use byteorder::{WriteBytesExt, ReadBytesExt, LittleEndian};
 use num::FromPrimitive;
 
 const PROTO_MASK: u32 = 0x80000000;
@@ -46,6 +46,12 @@ impl MsgHdr {
             target_job_id: data.read_u64::<LittleEndian>().unwrap(),
             source_job_id: data.read_u64::<LittleEndian>().unwrap()
         }
+    }
+
+    pub fn write_to(&self, data: &mut Cursor<Vec<u8>>) {
+        data.write_u32::<LittleEndian>(self.msg as u32).unwrap();
+        data.write_u64::<LittleEndian>(self.target_job_id).unwrap();
+        data.write_u64::<LittleEndian>(self.source_job_id).unwrap();
     }
 }
 
@@ -119,6 +125,14 @@ impl MessageHeader {
         }
     }
 
+    pub fn write_to(&self, data: &mut Cursor<Vec<u8>>) {
+        match *self {
+            MessageHeader::MsgHdr(ref h) => h.write_to(data),
+            MessageHeader::MsgHdrProtoBuf(_) => unimplemented!(),
+            MessageHeader::ExtendedClientMsgHdr(_) => unimplemented!(),
+        }
+    }
+
     /// Gets the EMsg of the inner header type.
     pub fn emsg(&self) -> EMsg {
         match *self {
@@ -134,4 +148,32 @@ impl MessageHeader {
 pub struct Message {
     pub header: MessageHeader,
     pub body: Vec<u8>
+}
+
+impl Message {
+    pub fn parse(data: &mut Cursor<&Vec<u8>>) -> Self {
+        // Parse in the header
+        let header = MessageHeader::parse(data);
+
+        // Get the remaining data
+        let mut body = Vec::new();
+        data.read_to_end(&mut body).unwrap();
+
+        // Create the actual message
+        Message {
+            header: header,
+            body: body
+        }
+    }
+
+    pub fn write_to(&self, data: &mut Cursor<Vec<u8>>) {
+        self.header.write_to(data);
+        data.write(&self.body).unwrap();
+    }
+
+    pub fn into_bytes(&self) -> Vec<u8> {
+        let mut data_c = Cursor::new(Vec::new());
+        self.write_to(&mut data_c);
+        data_c.into_inner()
+    }
 }
