@@ -2,6 +2,7 @@
 name = "boiler"
 version = "0.1.0"
 authors = ["Layl <LaylConway@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 byteorder = "0.4"

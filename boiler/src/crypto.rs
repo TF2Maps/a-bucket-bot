@@ -3,7 +3,7 @@ use openssl::crypto::pkey::PKey;
 use rand::Rng;
 use rand::os::OsRng;
 
-/// Generate a session key.
+/// Generates a session key.
 pub fn generate_key() -> Vec<u8> {
     let mut session_key = vec![0u8; 32];
 
@@ -13,7 +13,7 @@ pub fn generate_key() -> Vec<u8> {
     session_key
 }
 
-/// Encrypt a session key using steam's public key.
+/// Encrypts a session key using steam's public key.
 pub fn encrypt_key(key: &[u8]) -> Vec<u8> {
     // Load in the key
     let steam_pkey_data = include_bytes!("../assets/steam.pub") as &[u8];
