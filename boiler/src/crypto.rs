@@ -1,5 +1,5 @@
 use std::io::Cursor;
-use openssl::crypto::pkey::{PKey, EncryptionPadding};
+use openssl::crypto::pkey::PKey;
 use rand::Rng;
 use rand::os::OsRng;
 
@@ -16,11 +16,11 @@ pub fn generate_key() -> Vec<u8> {
 /// Encrypt a session key using steam's public key.
 pub fn encrypt_key(key: &[u8]) -> Vec<u8> {
     // Load in the key
-    let steam_pkey_data = include_bytes!("../../assets/steam.pub") as &[u8];
+    let steam_pkey_data = include_bytes!("../assets/steam.pub") as &[u8];
     let steam_pkey = PKey::public_key_from_pem(&mut Cursor::new(steam_pkey_data)).unwrap();
 
     // Actually perform the encryption
-    let encrypted_key = steam_pkey.encrypt_with_padding(key, EncryptionPadding::PKCS1v15);
+    let encrypted_key = steam_pkey.public_encrypt(key);
 
     // Return the new key
     encrypted_key
