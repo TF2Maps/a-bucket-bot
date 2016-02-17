@@ -57,7 +57,10 @@ fn main() {
                 };
                 client.send(message);
             },
-            _ => {}
+            EMsg::ChannelEncryptResult => {
+                debug!("Completing encryption handshake...");
+            }
+            _ => { debug!("Received unknown message type"); }
         }
     }
 

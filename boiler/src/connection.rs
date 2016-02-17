@@ -57,6 +57,7 @@ impl Handler for SteamConnectionRuntime {
 
 impl SteamConnectionRuntime {
     fn readable(&mut self) {
+        // TODO: Detect if we were dropped by the server, in which case we'll read 0 bytes
         trace!("Received connection readable event");
 
         // Read in the packet header
