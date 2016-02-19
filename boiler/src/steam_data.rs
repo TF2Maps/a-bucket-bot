@@ -3,15 +3,21 @@
 use std::io::{Cursor, Read, Write};
 use byteorder::{WriteBytesExt, ReadBytesExt, LittleEndian};
 use num::FromPrimitive;
+use boiler_generated::ProtoMessage;
+use boiler_generated::steammessages_base::CMsgProtoBufHeader;
 
 const PROTO_MASK: u32 = 0x80000000;
 
 enum_from_primitive! {
     #[derive(Clone, Copy, Debug, PartialEq)]
     pub enum EMsg {
+        ClientLogOnResponse = 751,
+		ClientVACChallenge = 753,
+		ClientSetHeartbeatRate = 755,
         ChannelEncryptRequest = 1303,
     	ChannelEncryptResponse = 1304,
     	ChannelEncryptResult = 1305,
+        ClientLogon = 5514,
     }
 }
 
@@ -56,7 +62,10 @@ impl MsgHdr {
 }
 
 #[derive(Debug)]
-pub struct MsgHdrProtoBuf;
+pub struct MsgHdrProtoBuf {
+    pub msg: EMsg,
+    pub proto: CMsgProtoBufHeader,
+}
 
 impl MsgHdrProtoBuf {
     pub fn parse(_data: &mut Cursor<&Vec<u8>>) -> Self {
@@ -73,6 +82,20 @@ impl MsgHdrProtoBuf {
         //targetJobID = header.proto.jobid_target;
 
         unimplemented!();
+    }
+
+
+    pub fn write_to(&self, data: &mut Cursor<Vec<u8>>) {
+        // Turn the protobuf data into bytes
+        let bytes = self.proto.write_to_bytes().unwrap();
+
+        // Flag the msg as protobuf
+        let msg = self.msg as u32 | PROTO_MASK;
+
+        // Actually write in the header data
+        data.write_u32::<LittleEndian>(msg).unwrap();
+        data.write_u32::<LittleEndian>(bytes.len() as u32).unwrap();
+        data.write(&bytes).unwrap();
     }
 }
 
@@ -128,7 +151,7 @@ impl MessageHeader {
     pub fn write_to(&self, data: &mut Cursor<Vec<u8>>) {
         match *self {
             MessageHeader::MsgHdr(ref h) => h.write_to(data),
-            MessageHeader::MsgHdrProtoBuf(_) => unimplemented!(),
+            MessageHeader::MsgHdrProtoBuf(ref h) => h.write_to(data),
             MessageHeader::ExtendedClientMsgHdr(_) => unimplemented!(),
         }
     }

@@ -5,6 +5,7 @@ extern crate mio;
 extern crate num;
 extern crate openssl;
 extern crate rand;
+extern crate boiler_generated;
 
 mod connection;
 mod steam_data;
