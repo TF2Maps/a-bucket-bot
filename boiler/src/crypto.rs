@@ -4,15 +4,19 @@ use openssl::crypto::symm::{Crypter, Mode, Type};
 use rand::Rng;
 use rand::os::OsRng;
 
-/// Generates a session key.
-pub fn generate_key() -> Vec<u8> {
-    let mut session_key = vec![0u8; 32];
+fn generate_data(bytes: usize) -> Vec<u8> {
+    let mut session_key = vec![0u8; bytes];
 
     // TODO: Allow rng to be created only once
     let mut rng = OsRng::new().unwrap();
     rng.fill_bytes(&mut session_key);
 
     session_key
+}
+
+/// Generates a session key.
+pub fn generate_key() -> Vec<u8> {
+    generate_data(32)
 }
 
 /// Encrypts a session key using steam's public key.
@@ -28,33 +32,44 @@ pub fn encrypt_key(key: &[u8]) -> Vec<u8> {
     encrypted_key
 }
 
+fn crypt_iv(iv: &[u8], key: &[u8], mode: Mode) -> Vec<u8> {
+    let crypter = Crypter::new(Type::AES_256_CBC);
+    crypter.init(mode, key, "".as_bytes());
+    crypter.pad(false);
+
+    // Actually perform the encryption
+    let mut buffer = crypter.update(&iv);
+    buffer.extend_from_slice(&crypter.finalize());
+
+    buffer
+}
+
+fn crypt_data(data: &[u8], key: &[u8], iv: &[u8], mode: Mode) -> Vec<u8> {
+    let crypter = Crypter::new(Type::AES_256_CBC);
+    crypter.init(mode, key, iv);
+
+    // Actually perform the encryption
+    let mut buffer = crypter.update(&data);
+    buffer.extend_from_slice(&crypter.finalize());
+
+    buffer
+}
+
 pub fn symmetric_encrypt(data: &[u8], key: &[u8]) -> Vec<u8> {
-    unimplemented!();
+    let iv = generate_data(16);
 
-    /*
-    var iv = crypto.randomBytes(16);
-    var aesIv = crypto.createCipheriv('aes-256-ecb', key, '');
-    aesIv.setAutoPadding(false);
-    aesIv.end(iv);
+    let mut output = crypt_iv(&iv, key, Mode::Encrypt);
+    output.extend_from_slice(&crypt_data(data, key, &iv, Mode::Encrypt));
 
-    var aesData = crypto.createCipheriv('aes-256-cbc', key, iv);
-    aesData.end(input);
-
-    return Buffer.concat([aesIv.read(), aesData.read()]);
-    */
+    output
 }
 
 pub fn symmetric_decrypt(data: &[u8], key: &[u8]) -> Vec<u8> {
-    unimplemented!();
+    // Slice out the parts
+    let encrypted_iv = &data[0..16];
+    let encrypted_data = &data[16..];
 
-    /*
-    var aesIv = crypto.createDecipheriv('aes-256-ecb', key, '');
-    aesIv.setAutoPadding(false);
-    aesIv.end(input.slice(0, 16));
-
-    var aesData = crypto.createDecipheriv('aes-256-cbc', key, aesIv.read());
-    aesData.end(input.slice(16));
-
-    return aesData.read();
-    */
+    // Perform the decryption
+    let iv = crypt_iv(encrypted_iv, key, Mode::Decrypt);
+    crypt_data(encrypted_data, key, &iv, Mode::Decrypt)
 }

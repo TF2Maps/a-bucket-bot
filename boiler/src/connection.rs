@@ -8,7 +8,8 @@ use std::sync::mpsc::{self, Sender, Receiver};
 
 enum SteamConnectionEvent {
     Shutdown,
-    SendMessage(Message)
+    SendMessage(Message),
+    SetKey(Vec<u8>)
 }
 
 struct SteamConnectionRuntime {
@@ -16,7 +17,8 @@ struct SteamConnectionRuntime {
     token: Token,
     event_set: EventSet,
     msg_sender: Sender<Message>,
-    queued_messages: Vec<Message>
+    queued_messages: Vec<Message>,
+    encryption_key: Option<Vec<u8>>
 }
 
 impl Handler for SteamConnectionRuntime {
@@ -24,7 +26,7 @@ impl Handler for SteamConnectionRuntime {
     type Message = SteamConnectionEvent;
 
     fn ready(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>, _token: Token, events: EventSet) {
-        debug!("Handling ready() event with EventSet {:?}...", events);
+        trace!("Handling ready() event with EventSet {:?}...", events);
 
         if events.is_readable() {
             self.readable();
@@ -39,6 +41,10 @@ impl Handler for SteamConnectionRuntime {
         trace!("Handling notify() event...");
 
         match event {
+            SteamConnectionEvent::Shutdown => {
+                debug!("Shutting down event loop...");
+                event_loop.shutdown();
+            },
             SteamConnectionEvent::SendMessage(msg) => {
                 debug!("Received message for sending");
                 self.queued_messages.push(msg);
@@ -46,10 +52,10 @@ impl Handler for SteamConnectionRuntime {
                 event_loop
                     .reregister(&self.stream, self.token, self.event_set, PollOpt::edge())
                     .unwrap();
-            }
-            SteamConnectionEvent::Shutdown => {
-                debug!("Shutting down event loop...");
-                event_loop.shutdown();
+            },
+            SteamConnectionEvent::SetKey(key) => {
+                debug!("Switching to encrypted mode");
+                self.encryption_key = Some(key);
             }
         }
     }
@@ -87,7 +93,7 @@ impl SteamConnectionRuntime {
     fn writeable(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>) {
         // Go over all queued messages
         for msg in &self.queued_messages {
-            debug!("Sending queued message...");
+            trace!("Sending queued message...");
 
             // TODO: Perhaps send this all at once? See if it improves performance later.
             // TODO: Pre-estimate the packet size needed.
@@ -149,6 +155,12 @@ impl SteamConnection {
         }
     }
 
+    /// Disconnects this connection.
+    pub fn disconnect(&mut self) {
+        debug!("Sending disconnect event to runtime...");
+        self.event_sender.send(SteamConnectionEvent::Shutdown).unwrap();
+    }
+
     /// Blocks until a single message has been received, then returns it.
     pub fn recv(&mut self) -> Message {
         self.incoming_receiver.recv().unwrap()
@@ -159,10 +171,9 @@ impl SteamConnection {
         self.event_sender.send(SteamConnectionEvent::SendMessage(message)).unwrap();
     }
 
-    /// Disconnects this connection.
-    pub fn disconnect(&mut self) {
-        debug!("Sending disconnect event to runtime...");
-        self.event_sender.send(SteamConnectionEvent::Shutdown).unwrap();
+    /// Notifies the runtime to use an ecryption key from now on for all messages.
+    pub fn set_encryption_key(&mut self, key: Vec<u8>) {
+        self.event_sender.send(SteamConnectionEvent::SetKey(key)).unwrap();
     }
 
     /// Blocks until this connection has been closed.
@@ -189,7 +200,8 @@ impl SteamConnection {
             token: token,
             event_set: event_set,
             msg_sender: msg_sender,
-            queued_messages: Vec::new()
+            queued_messages: Vec::new(),
+            encryption_key: None
         };
         event_loop.run(&mut runtime).unwrap();
     }

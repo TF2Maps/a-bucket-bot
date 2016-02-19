@@ -6,7 +6,7 @@ extern crate log4rs;
 
 use std::io::{Cursor, Write};
 use boiler::{SteamConnection, EMsg, Message, MessageHeader, MsgHdr};
-use byteorder::{WriteBytesExt, LittleEndian};
+use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use crc::{crc32, Hasher32};
 
 fn main() {
@@ -15,6 +15,7 @@ fn main() {
 
     // Start the client
     let mut client = SteamConnection::connect();
+    let mut encryption_key = None;
 
     // Loop over messages that get sent to us
     loop {
@@ -33,6 +34,9 @@ fn main() {
                 let key = boiler::crypto::generate_key();
                 let encrypted_key = boiler::crypto::encrypt_key(&key);
                 let crc = crc32::checksum_ieee(&encrypted_key);
+
+                // Store the key for later
+                encryption_key = Some(key);
 
                 // Push them into a buffer to send
                 let body: Vec<u8> = Vec::new();
@@ -59,8 +63,20 @@ fn main() {
             },
             EMsg::ChannelEncryptResult => {
                 debug!("Completing encryption handshake...");
+
+                // See if it succeeded first
+                let result = Cursor::new(message.body).read_u32::<LittleEndian>().unwrap();
+                if result != 1 {
+                    panic!("Encryption failed, EResult: {}", result);
+                }
+                trace!("Encryption succeeded!");
+
+                // Now notify the connection that all messages from now on will use encryption
+                client.set_encryption_key(encryption_key.take().unwrap());
+
+                // TODO: We are now connected, send a login request
             }
-            _ => { debug!("Received unknown message type"); }
+            msg => { debug!("Received unknown message type {:?}", msg); }
         }
     }
 

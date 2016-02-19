@@ -39,7 +39,7 @@ pub struct MsgHdr {
 
 impl MsgHdr {
     pub fn parse(data: &mut Cursor<&Vec<u8>>) -> Self {
-        debug!("Decoding MsgHdr type header");
+        trace!("Decoding MsgHdr type header");
 
         MsgHdr {
             msg: EMsg::parse(data),
@@ -60,7 +60,7 @@ pub struct MsgHdrProtoBuf;
 
 impl MsgHdrProtoBuf {
     pub fn parse(_data: &mut Cursor<&Vec<u8>>) -> Self {
-        debug!("Decoding MsgHdrProtoBuf type header");
+        trace!("Decoding MsgHdrProtoBuf type header");
 
         // TODO: Implement, the following is from node-steam-client
         //header = Schema.MsgHdrProtoBuf.decode(data);
@@ -81,7 +81,7 @@ pub struct ExtendedClientMsgHdr;
 
 impl ExtendedClientMsgHdr {
     pub fn parse(_data: &mut Cursor<&Vec<u8>>) -> Self {
-        debug!("Decoding ExtendedClientMsgHdr type header");
+        trace!("Decoding ExtendedClientMsgHdr type header");
 
         // TODO: Implement, the following is from node-steam-client
         //header = Schema.ExtendedClientMsgHdr.decode(data);
