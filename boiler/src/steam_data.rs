@@ -11,6 +11,27 @@ const PROTO_MASK: u32 = 0x80000000;
 enum_from_primitive! {
     #[derive(Clone, Copy, Debug, PartialEq)]
     pub enum EMsg {
+        Invalid = 0,
+        Multi = 1,
+        GenericReply = 100,
+        DestJobFailed = 113,
+        Alert = 115,
+        ScidRequest = 120,
+        ScidResponse = 121,
+        JobHeartbeat = 123,
+        HubConnect = 124,
+        Subscribe = 126,
+        RouteMessage = 127,
+        RemoteSysID = 128,
+        AmCreateAccountResponse = 129,
+        WGRequest = 130,
+        WGResponse = 131,
+        KeepAlive = 132,
+        WebApiJobRequest = 133,
+        WebApiJobResponse = 134,
+        ClientSessionStart = 135,
+        ClientSessionEnd = 136,
+        ClientSessionUpdateAuthTicket = 137,
         ClientLogOnResponse = 751,
 		ClientVACChallenge = 753,
 		ClientSetHeartbeatRate = 755,
@@ -32,7 +53,9 @@ impl EMsg {
     }
 
     pub fn from_raw(raw: u32) -> Self {
-        EMsg::from_u32(raw & !PROTO_MASK).unwrap()
+        let protoless_raw = raw & !PROTO_MASK;
+        EMsg::from_u32(protoless_raw)
+            .expect(&format!("Can't parse EMsg {}, unknown!", protoless_raw))
     }
 }
 
