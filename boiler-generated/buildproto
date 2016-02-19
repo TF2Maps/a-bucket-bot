@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+rsprotoc() { protoc "$@" --rust_out ../src/ --proto_path=./ --proto_path=/usr/include --proto_path=/usr/local/include ;}
+
+cd proto
+rsprotoc encrypted_app_ticket.proto
+rsprotoc steammessages_base.proto
+rsprotoc steammessages_clientserver.proto

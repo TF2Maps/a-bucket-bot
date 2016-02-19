@@ -1,0 +1,8 @@
+[package]
+name = "boiler-generated"
+version = "0.1.0"
+authors = ["Layl <LaylConway@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+protobuf = "1.0.18"
