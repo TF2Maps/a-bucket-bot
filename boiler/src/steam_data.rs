@@ -68,20 +68,23 @@ pub struct MsgHdrProtoBuf {
 }
 
 impl MsgHdrProtoBuf {
-    pub fn parse(_data: &mut Cursor<&Vec<u8>>) -> Self {
+    pub fn parse(data: &mut Cursor<&Vec<u8>>) -> Self {
         trace!("Decoding MsgHdrProtoBuf type header");
 
-        // TODO: Implement, the following is from node-steam-client
-        //header = Schema.MsgHdrProtoBuf.decode(data);
-        //header.proto = Steam._processProto(header.proto);
-        //if (!this._sessionID && header.headerLength > 0) {
-        //	this._sessionID = header.proto.client_sessionid;
-        //	this.steamID = header.proto.steamid;
-        //}
-        //sourceJobID = header.proto.jobid_source;
-        //targetJobID = header.proto.jobid_target;
+        // Read in data
+        let msg = EMsg::parse(data);
+        let len = data.read_u32::<LittleEndian>().unwrap() as usize;
+        let mut bytes = vec![0u8; len];
+        data.read(&mut bytes).unwrap();
 
-        unimplemented!();
+        // Convert protobuf data to the header type
+        let mut proto = CMsgProtoBufHeader::new();
+        proto.merge_from_bytes(&bytes).unwrap();
+
+        MsgHdrProtoBuf {
+            msg: msg,
+            proto: proto
+        }
     }
 
 
@@ -160,7 +163,7 @@ impl MessageHeader {
     pub fn emsg(&self) -> EMsg {
         match *self {
             MessageHeader::MsgHdr(ref h) => h.msg,
-            MessageHeader::MsgHdrProtoBuf(_) => unimplemented!(),
+            MessageHeader::MsgHdrProtoBuf(ref h) => h.msg,
             MessageHeader::ExtendedClientMsgHdr(_) => unimplemented!(),
         }
     }
