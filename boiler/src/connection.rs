@@ -1,10 +1,11 @@
 use std::thread::{self, JoinHandle};
 use std::io::{Read, Write, Cursor};
+use std::sync::mpsc::{self, Sender, Receiver};
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use mio::{Handler, EventLoop, Token, EventSet, PollOpt};
 use mio::tcp::TcpStream;
+use crypto;
 use steam_data::Message;
-use std::sync::mpsc::{self, Sender, Receiver};
 
 enum SteamConnectionEvent {
     Shutdown,
@@ -83,7 +84,10 @@ impl SteamConnectionRuntime {
         let mut data = vec![0u8; length as usize];
         self.stream.read(&mut data).unwrap();
 
-        // TODO: decrypt the data here if encryption is on
+        // Decrypt the data if encryption is on
+        if let &Some(ref key) = &self.encryption_key {
+            data = crypto::symmetric_decrypt(&data, key);
+        }
 
         // Turn the data into a message and send it over
         let msg = Message::parse(&mut Cursor::new(&data));
@@ -101,7 +105,12 @@ impl SteamConnectionRuntime {
             let mut packet_c = Cursor::new(packet);
 
             // Turn the message into data
-            let msg_data = msg.into_bytes();
+            let mut msg_data = msg.into_bytes();
+
+            // Encrypt the data if encryption is on
+            if let &Some(ref key) = &self.encryption_key {
+                msg_data = crypto::symmetric_encrypt(&msg_data, key);
+            }
 
             // Write the packet header and the message to the data
             packet_c.write_u32::<LittleEndian>(msg_data.len() as u32).unwrap(); // Msg length
