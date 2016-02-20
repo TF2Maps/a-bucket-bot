@@ -97,14 +97,12 @@ fn main() {
                 let mut body = CMsgClientLogon::new();
                 body.set_account_name(name.into());
                 body.set_password(password.into());
-                body.set_protocol_version(65575);
+                body.set_protocol_version(65579);
 
                 // Build and send the message
                 let mut hdr_proto = CMsgProtoBufHeader::new();
                 hdr_proto.set_client_sessionid(0);
                 hdr_proto.set_steamid(76561197960265728);
-                //hdr_proto.set_jobid_target(0xffffffffffffffff);
-                //hdr_proto.set_jobid_source(0xffffffffffffffff);
                 let header = MsgHdrProtoBuf {
                     msg: EMsg::ClientLogon,
                     proto: hdr_proto,
@@ -116,29 +114,11 @@ fn main() {
                 client.send(message);
             },
             EMsg::ClientLogOnResponse => {
-                debug!("Completing logon...");
+                debug!("Received Log-On Response, if a login was pending it has been completed");
 
                 let mut response = CMsgClientLogonResponse::new();
                 response.merge_from_bytes(&message.body).unwrap();
                 println!("{:?}", response);
-                /*var logonResp = Schema.CMsgClientLogonResponse.decode(data);
-            	var eresult = logonResp.eresult;
-
-            	if (eresult == Steam.EResult.OK) {
-            		var hbDelay = logonResp.out_of_game_heartbeat_seconds;
-
-            		this._heartBeatFunc = setInterval(function() {
-            			this.send({
-            				"msg": EMsg.ClientHeartBeat,
-            				"proto": {}
-            			}, new Schema.CMsgClientHeartBeat().toBuffer());
-            		}.bind(this), hbDelay * 1000);
-
-            		this.loggedOn = true;
-            	}
-
-            	this.emit('logOnResponse', Steam._processProto(logonResp));
-                */
             }
             msg => { debug!("Received unknown message type {:?}", msg); }
         }

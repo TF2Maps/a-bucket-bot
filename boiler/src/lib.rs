@@ -1,5 +1,6 @@
 extern crate byteorder;
 #[macro_use] extern crate enum_primitive;
+extern crate flate2;
 #[macro_use] extern crate log;
 extern crate mio;
 extern crate num;

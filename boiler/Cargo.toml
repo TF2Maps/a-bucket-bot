@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 byteorder = "0.4"
 enum_primitive = "0.1"
+flate2 = "0.2.13"
 log = "0.3"
 mio = "0.5"
 num = "0.1"

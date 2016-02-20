@@ -2,10 +2,13 @@ use std::thread::{self, JoinHandle};
 use std::io::{Read, Write, Cursor};
 use std::sync::mpsc::{self, Sender, Receiver};
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
+use flate2::read::GzDecoder;
 use mio::{Handler, EventLoop, Token, EventSet, PollOpt};
 use mio::tcp::TcpStream;
+use boiler_generated::ProtoMessage;
+use boiler_generated::steammessages_base::CMsgMulti;
 use crypto;
-use steam_data::Message;
+use steam_data::{EMsg, Message};
 
 enum SteamConnectionEvent {
     Shutdown,
@@ -65,7 +68,7 @@ impl Handler for SteamConnectionRuntime {
 impl SteamConnectionRuntime {
     fn readable(&mut self) {
         // TODO: Detect if we were dropped by the server, in which case we'll read 0 bytes
-        debug!("Received connection readable event");
+        trace!("Received connection readable event");
 
         // Read in the packet header
         let mut header = vec![0u8; 8];
@@ -89,9 +92,53 @@ impl SteamConnectionRuntime {
             data = crypto::symmetric_decrypt(&data, key);
         }
 
-        // Turn the data into a message and send it over
+        // Turn the data into a message
         let msg = Message::parse(&mut Cursor::new(&data));
-        self.msg_sender.send(msg).unwrap();
+
+        // If it's not a multi-message, we can send it and finish
+        if msg.header.emsg() != EMsg::Multi {
+            trace!("Received single message from server");
+            self.msg_sender.send(msg).unwrap();
+            return;
+        }
+
+        // If it is a multi message however, we need to split it apart
+        trace!("Received multi message from server");
+
+        // First, parse in the protobuf message
+        let mut multi = CMsgMulti::new();
+        multi.merge_from_bytes(&msg.body).unwrap();
+
+        let mut payload = Vec::from(multi.get_message_body());
+
+        // See if we need to unzip the payload and if yes, do so
+        let size_unzipped = multi.get_size_unzipped() as usize;
+    	if size_unzipped != 0 {
+            trace!("Unzipping multi payload...");
+            let mut decoder = GzDecoder::new(Cursor::new(payload)).unwrap();
+            let mut unzipped_payload = vec![0u8; size_unzipped];
+            decoder.read(&mut unzipped_payload).unwrap();
+            payload = unzipped_payload;
+    	}
+
+        // Parse and send all the individual messages
+        let mut remaining_bytes = payload.len();
+        let mut cursor = Cursor::new(&payload);
+        while remaining_bytes > 0 {
+            // Get the size of the sub message for sanity checking later on
+            let submsg_size = cursor.read_u32::<LittleEndian>().unwrap() as usize;
+
+            // Get the sub-message's data TODO: Make this zero-copy
+            let mut data = vec![0u8; submsg_size];
+            cursor.read_exact(&mut data).unwrap();
+
+            // Parse and send the actual message
+            let message = Message::parse(&mut Cursor::new(&data));
+            self.msg_sender.send(message).unwrap();
+
+            // Reduce the remaining so we actually stop the loop when all is read
+            remaining_bytes -= 4 + submsg_size;
+        }
     }
 
     fn writeable(&mut self, event_loop: &mut EventLoop<SteamConnectionRuntime>) {
