@@ -34,6 +34,18 @@ enum_from_primitive! {
         ClientSessionUpdateAuthTicket = 137,
         ClientHeartBeat = 703,
         ClientVACResponse = 704,
+        ClientLogOff = 706,
+        ClientNoUDPConnectivity = 707,
+        ClientInformOfCreateAccount = 708,
+        ClientAckVACBan = 709,
+        ClientConnectionStats = 710,
+        ClientInitPurchase = 711,
+        ClientPingResponse = 712,
+        ClientRemoveFriend = 714,
+        ClientGamesPlayedNoDataBlob = 715,
+        ClientChangeStatus = 716,
+        ClientVacStatusResponse = 717,
+        ClientFriendMsg = 718,
         ClientLogOnResponse = 751,
 		ClientVACChallenge = 753,
 		ClientSetHeartbeatRate = 755,
@@ -313,6 +325,19 @@ enum_from_primitive! {
         ClientPlayerNicknameList = 5587,
         AMClientSetPlayerNickname = 5588,
         AMClientSetPlayerNicknameResponse = 5589,
+    }
+}
+
+enum_from_primitive! {
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    pub enum EPersonaState {
+		Offline = 0,
+		Online = 1,
+		Busy = 2,
+		Away = 3,
+		Snooze = 4,
+		LookingToTrade = 5,
+		LookingToPlay = 6
     }
 }
 

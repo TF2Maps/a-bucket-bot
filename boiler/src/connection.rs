@@ -51,7 +51,7 @@ impl Handler for SteamConnectionRuntime {
                 event_loop.shutdown();
             },
             SteamConnectionEvent::SendMessage(msg) => {
-                info!("Received message for sending");
+                trace!("Received message for sending");
                 self.queued_messages.push(msg);
                 self.event_set.insert(EventSet::writable());
                 event_loop
@@ -300,7 +300,7 @@ impl SteamConnection {
 
             // Send that message
             event_sender.send(SteamConnectionEvent::SendMessage(message)).unwrap();
-            debug!("Dispatched heartbeat to runtime");
+            trace!("Dispatched heartbeat to runtime");
         }
     }
 }

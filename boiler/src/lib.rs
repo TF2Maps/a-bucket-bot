@@ -14,4 +14,4 @@ mod steam_data;
 pub mod crypto;
 
 pub use connection::{SteamConnection};
-pub use steam_data::{EMsg, MsgHdr, MsgHdrProtoBuf, ExtendedClientMsgHdr, MessageHeader, Message};
+pub use steam_data::{EMsg, EPersonaState, MsgHdr, MsgHdrProtoBuf, ExtendedClientMsgHdr, MessageHeader, Message};

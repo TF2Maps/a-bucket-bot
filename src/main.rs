@@ -8,10 +8,10 @@ extern crate toml;
 
 use std::io::{Cursor, Read, Write};
 use std::fs::File;
-use boiler::{SteamConnection, EMsg, Message, MessageHeader, MsgHdr, MsgHdrProtoBuf};
+use boiler::{SteamConnection, EMsg, EPersonaState, Message, MessageHeader, MsgHdr, MsgHdrProtoBuf};
 use boiler_generated::ProtoMessage;
 use boiler_generated::steammessages_base::CMsgProtoBufHeader;
-use boiler_generated::steammessages_clientserver::{CMsgClientLogon, CMsgClientLogonResponse};
+use boiler_generated::steammessages_clientserver::{CMsgClientLogon, CMsgClientLogonResponse, CMsgClientChangeStatus, CMsgClientLoggedOff};
 use byteorder::{ReadBytesExt, WriteBytesExt, LittleEndian};
 use crc::{crc32, Hasher32};
 use toml::Parser;
@@ -23,7 +23,7 @@ fn main() {
     // Start the client
     let mut client = SteamConnection::connect();
     let mut encryption_key = None;
-    let mut session_id = 0;
+    let mut session_id;
 
     // Loop over messages that get sent to us
     loop {
@@ -136,6 +136,29 @@ fn main() {
                 // Start up the heartbeat so we don't get disconnected
                 let interval = response.get_out_of_game_heartbeat_seconds();
                 client.start_heartbeat(interval, session_id);
+
+                // Set ourselves to online
+                let mut body = CMsgClientChangeStatus::new();
+                body.set_persona_state(EPersonaState::Online as u32);
+                body.set_player_name("A Bucket2".into());
+                let mut hdr_proto = CMsgProtoBufHeader::new();
+                hdr_proto.set_jobid_source(1); // TODO: Auto-assign
+                hdr_proto.set_client_sessionid(session_id);
+                hdr_proto.set_steamid(76561197960265728);
+                let header = MsgHdrProtoBuf {
+                    msg: EMsg::ClientChangeStatus,
+                    proto: hdr_proto,
+                };
+                let message = Message {
+                    header: MessageHeader::MsgHdrProtoBuf(header),
+                    body: body.write_to_bytes().unwrap()
+                };
+                client.send(message);
+            },
+            EMsg::ClientLoggedOff => {
+                let mut data = CMsgClientLoggedOff::new();
+                data.merge_from_bytes(&message.body).unwrap();
+                debug!("Logged off with EResult: {:?}", data.get_eresult());
             }
             msg => { debug!("Received unknown message type {:?}", msg); }
         }
