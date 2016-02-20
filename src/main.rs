@@ -23,6 +23,7 @@ fn main() {
     // Start the client
     let mut client = SteamConnection::connect();
     let mut encryption_key = None;
+    let mut session_id = 0;
 
     // Loop over messages that get sent to us
     loop {
@@ -114,11 +115,27 @@ fn main() {
                 client.send(message);
             },
             EMsg::ClientLogOnResponse => {
-                debug!("Received Log-On Response, if a login was pending it has been completed");
+                // Keep track of the session id for all future messages
+                if let &MessageHeader::MsgHdrProtoBuf(ref header) = &message.header {
+                    session_id = header.proto.get_client_sessionid();
+                } else {
+                    panic!("Unexpected header for this message");
+                }
 
+                // Parse in the response
                 let mut response = CMsgClientLogonResponse::new();
                 response.merge_from_bytes(&message.body).unwrap();
-                println!("{:?}", response);
+
+                if response.get_eresult() != 1 {
+                    panic!("Failed to LogOn");
+                }
+
+                // We now know our login succeeded
+                debug!("LogOn success received");
+
+                // Start up the heartbeat so we don't get disconnected
+                let interval = response.get_out_of_game_heartbeat_seconds();
+                client.start_heartbeat(interval, session_id);
             }
             msg => { debug!("Received unknown message type {:?}", msg); }
         }

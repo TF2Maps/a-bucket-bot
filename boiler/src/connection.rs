@@ -6,9 +6,10 @@ use flate2::read::GzDecoder;
 use mio::{Handler, EventLoop, Token, EventSet, PollOpt};
 use mio::tcp::TcpStream;
 use boiler_generated::ProtoMessage;
-use boiler_generated::steammessages_base::CMsgMulti;
+use boiler_generated::steammessages_base::{CMsgMulti, CMsgProtoBufHeader};
+use boiler_generated::steammessages_clientserver::CMsgClientHeartBeat;
 use crypto;
-use steam_data::{EMsg, Message};
+use steam_data::{EMsg, Message, MessageHeader, MsgHdrProtoBuf};
 
 enum SteamConnectionEvent {
     Shutdown,
@@ -50,7 +51,7 @@ impl Handler for SteamConnectionRuntime {
                 event_loop.shutdown();
             },
             SteamConnectionEvent::SendMessage(msg) => {
-                debug!("Received message for sending");
+                info!("Received message for sending");
                 self.queued_messages.push(msg);
                 self.event_set.insert(EventSet::writable());
                 event_loop
@@ -232,6 +233,18 @@ impl SteamConnection {
         self.event_sender.send(SteamConnectionEvent::SetKey(key)).unwrap();
     }
 
+    /// Starts the heartbeat runtime with an interval of the given amount of seconds.
+    pub fn start_heartbeat(&mut self, interval: i32, session_id: i32) {
+        // Start the heartbeat
+        let sender = self.event_sender.clone();
+        let _handle = thread::Builder::new()
+            .name("boiler-heartbeat".into())
+            .spawn(move || {
+                Self::heartbeat_runtime(interval, session_id, sender);
+            })
+            .unwrap();
+    }
+
     /// Blocks until this connection has been closed.
     pub fn wait_close(self) {
         self.runtime.join().unwrap();
@@ -260,5 +273,34 @@ impl SteamConnection {
             encryption_key: None
         };
         event_loop.run(&mut runtime).unwrap();
+    }
+
+    fn heartbeat_runtime(interval: i32, session_id: i32, event_sender: ::mio::Sender<SteamConnectionEvent>) {
+        debug!("Starting at interval of {}", interval);
+
+        loop {
+            // Wait for the given amount of seconds
+            ::std::thread::sleep(::std::time::Duration::new(interval as u64, 0));
+
+            // Fill the heartbeat payload
+            let body = CMsgClientHeartBeat::new();
+
+            // Build up the heartbeat message
+            let mut hdr_proto = CMsgProtoBufHeader::new();
+            hdr_proto.set_client_sessionid(session_id);
+            hdr_proto.set_steamid(76561197960265728);
+            let header = MsgHdrProtoBuf {
+                msg: EMsg::ClientHeartBeat,
+                proto: hdr_proto,
+            };
+            let message = Message {
+                header: MessageHeader::MsgHdrProtoBuf(header),
+                body: body.write_to_bytes().unwrap()
+            };
+
+            // Send that message
+            event_sender.send(SteamConnectionEvent::SendMessage(message)).unwrap();
+            debug!("Dispatched heartbeat to runtime");
+        }
     }
 }
