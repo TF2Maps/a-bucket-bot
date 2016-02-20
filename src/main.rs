@@ -8,7 +8,7 @@ extern crate toml;
 
 use std::io::{Cursor, Read, Write};
 use std::fs::File;
-use boiler::{SteamConnection, EMsg, EPersonaState, Message, MessageHeader, MsgHdr, MsgHdrProtoBuf};
+use boiler::{SteamConnection, EMsg, EPersonaState, Message, MessageHeader, MsgHdr, MsgHdrProtoBuf, ExtendedClientMsgHdr};
 use boiler_generated::ProtoMessage;
 use boiler_generated::steammessages_base::CMsgProtoBufHeader;
 use boiler_generated::steammessages_clientserver::{CMsgClientLogon, CMsgClientLogonResponse, CMsgClientChangeStatus, CMsgClientLoggedOff};
@@ -23,8 +23,8 @@ fn main() {
     // Start the client
     let mut client = SteamConnection::connect();
     let mut encryption_key = None;
-    let mut session_id = 0;
-    let mut steam_id = 0;
+    let mut session_id;
+    let mut steam_id;
 
     // Loop over messages that get sent to us
     loop {
@@ -120,7 +120,6 @@ fn main() {
                 if let &MessageHeader::MsgHdrProtoBuf(ref header) = &message.header {
                     session_id = header.proto.get_client_sessionid();
                     steam_id = header.proto.get_steamid();
-                    println!("========================== steamid: {}", steam_id);
                 } else {
                     panic!("Unexpected header for this message");
                 }
@@ -130,23 +129,20 @@ fn main() {
                 response.merge_from_bytes(&message.body).unwrap();
 
                 if response.get_eresult() != 1 {
-                    panic!("Failed to LogOn");
+                    panic!("Failed to LogOn, EResult: {}", response.get_eresult());
                 }
 
                 // We now know our login succeeded
-                debug!("LogOn success received");
+                info!("Successfully logged in with SteamID {} and SessionID {}", steam_id, session_id);
 
                 // Start up the heartbeat so we don't get disconnected
                 let interval = response.get_out_of_game_heartbeat_seconds();
                 client.start_heartbeat(interval, session_id);
-            },
-            EMsg::ClientAccountInfo => {
-                debug!("Received account info, sending status change...");
 
                 // Set ourselves to online
                 let mut body = CMsgClientChangeStatus::new();
                 body.set_persona_state(EPersonaState::Online as u32);
-                body.set_player_name("A Bucket2".into());
+                body.set_player_name("A Bucket".into());
                 let mut hdr_proto = CMsgProtoBufHeader::new();
                 hdr_proto.set_jobid_source(1); // TODO: Auto-assign
                 hdr_proto.set_client_sessionid(session_id);
@@ -160,6 +156,32 @@ fn main() {
                     body: body.write_to_bytes().unwrap()
                 };
                 client.send(message);
+
+                // Massage the SteamID for TF2Maps until we've got what we need
+                let mut tf2maps_id = SteamId { value: 103582791429594873 };
+                tf2maps_id.set_account_instance(CHAT_INSTANCE_FLAG_CLAN);
+                tf2maps_id.set_account_type(8); // Account type: chat
+
+                // Connect to the group chat
+                // TODO: Add limited account warning
+                let mut body = Vec::new();
+                body.write_u64::<LittleEndian>(tf2maps_id.value).unwrap(); // SteamID
+                body.write_u8(0).unwrap(); // IsVoiceSpeaker
+                let header = ExtendedClientMsgHdr {
+                    msg: EMsg::ClientJoinChat,
+                    header_size: 36,
+                    header_version: 2,
+                    target_job_id: 0xffffffffffffffff,
+                    source_job_id: 0xffffffffffffffff,
+                    header_canary: 239,
+                    steam_id: steam_id,
+                    session_id: session_id,
+                };
+                let message = Message {
+                    header: MessageHeader::ExtendedClientMsgHdr(header),
+                    body: body
+                };
+                client.send(message);
             }
             EMsg::ClientLoggedOff => {
                 let mut data = CMsgClientLoggedOff::new();
@@ -171,4 +193,29 @@ fn main() {
     }
 
     //client.wait_close();
+}
+
+const ACCOUNT_INSTANCE_MASK: u32 = 0x000FFFFF;
+const CHAT_INSTANCE_FLAG_CLAN: u32 = ( ACCOUNT_INSTANCE_MASK + 1 ) >> 1;
+
+struct SteamId {
+    value: u64
+}
+
+impl SteamId {
+    /*fn get(&self, offset: usize, mask: u64) -> u64 {
+        (self.value >> offset) & mask
+    }*/
+
+    fn set(&mut self, offset: usize, mask: u64, new_value: u64) {
+        self.value = (self.value & !(mask << offset)) | ((new_value & mask) << offset);
+    }
+
+    fn set_account_instance(&mut self, value: u32) {
+        self.set(32, 0xFFFFF, value as u64);
+    }
+
+    fn set_account_type(&mut self, value: u32) {
+        self.set(52, 0xF, value as u64);
+    }
 }

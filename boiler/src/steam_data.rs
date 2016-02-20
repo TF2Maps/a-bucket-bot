@@ -426,7 +426,14 @@ impl MsgHdrProtoBuf {
 
 #[derive(Debug)]
 pub struct ExtendedClientMsgHdr {
-    msg: EMsg
+    pub msg: EMsg,
+    pub header_size: u8,
+    pub header_version: u16,
+    pub target_job_id: u64,
+    pub source_job_id: u64,
+    pub header_canary: u8,
+    pub steam_id: u64,
+    pub session_id: i32,
 }
 
 impl ExtendedClientMsgHdr {
@@ -434,14 +441,29 @@ impl ExtendedClientMsgHdr {
         trace!("Decoding ExtendedClientMsgHdr type header");
 
         // TODO: Implement, the following is from node-steam-client
-        //header = Schema.ExtendedClientMsgHdr.decode(data);
-        //sourceJobID = header.sourceJobID;
-        //targetJobID = header.targetJobID;
 
         debug!("WARNING, PARSING STUB, DOES NOT WORK YET");
         ExtendedClientMsgHdr {
-            msg: EMsg::parse(data)
+            msg: EMsg::parse(data),
+            header_size: 0,
+            header_version: 0,
+            target_job_id: 0,
+            source_job_id: 0,
+            header_canary: 0,
+            steam_id: 0,
+            session_id: 0,
         }
+    }
+
+    pub fn write_to(&self, data: &mut Cursor<Vec<u8>>) {
+        data.write_u32::<LittleEndian>(self.msg as u32).unwrap();
+        data.write_u8(self.header_size).unwrap();
+        data.write_u16::<LittleEndian>(self.header_version).unwrap();
+        data.write_u64::<LittleEndian>(self.target_job_id).unwrap();
+        data.write_u64::<LittleEndian>(self.source_job_id).unwrap();
+        data.write_u8(self.header_canary).unwrap();
+        data.write_u64::<LittleEndian>(self.steam_id).unwrap();
+        data.write_i32::<LittleEndian>(self.session_id).unwrap();
     }
 }
 
@@ -483,7 +505,7 @@ impl MessageHeader {
         match *self {
             MessageHeader::MsgHdr(ref h) => h.write_to(data),
             MessageHeader::MsgHdrProtoBuf(ref h) => h.write_to(data),
-            MessageHeader::ExtendedClientMsgHdr(_) => unimplemented!(),
+            MessageHeader::ExtendedClientMsgHdr(ref h) => h.write_to(data),
         }
     }
 
