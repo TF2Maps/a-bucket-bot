@@ -183,10 +183,26 @@ fn main() {
                 };
                 client.send(message);
             }
+            EMsg::ClientChatMsg => {
+                trace!("Deserializing chat message...");
+
+                let mut body_c = Cursor::new(message.body);
+
+                // First get the message's body
+                let msg_id_chatter = body_c.read_u64::<LittleEndian>().unwrap();
+                let msg_id_chatroom = body_c.read_u64::<LittleEndian>().unwrap();
+                let _msg_type = body_c.read_u32::<LittleEndian>().unwrap();
+
+                // Then the remaining is payload
+                let mut msg_data = String::new();
+                body_c.read_to_string(&mut msg_data).unwrap();
+
+                debug!("[{}] {}: {}", msg_id_chatroom, msg_id_chatter, msg_data);
+            }
             EMsg::ClientLoggedOff => {
                 let mut data = CMsgClientLoggedOff::new();
                 data.merge_from_bytes(&message.body).unwrap();
-                debug!("Logged off with EResult: {:?}", data.get_eresult());
+                panic!("Logged off with EResult: {:?}", data.get_eresult());
             }
             msg => { debug!("Received unknown message type {:?}", msg); }
         }

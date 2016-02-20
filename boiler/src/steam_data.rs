@@ -440,22 +440,20 @@ impl ExtendedClientMsgHdr {
     pub fn parse(data: &mut Cursor<&Vec<u8>>) -> Self {
         trace!("Decoding ExtendedClientMsgHdr type header");
 
-        // TODO: Implement, the following is from node-steam-client
-
-        debug!("WARNING, PARSING STUB, DOES NOT WORK YET");
         ExtendedClientMsgHdr {
             msg: EMsg::parse(data),
-            header_size: 0,
-            header_version: 0,
-            target_job_id: 0,
-            source_job_id: 0,
-            header_canary: 0,
-            steam_id: 0,
-            session_id: 0,
+            header_size: data.read_u8().unwrap(),
+            header_version: data.read_u16::<LittleEndian>().unwrap(),
+            target_job_id: data.read_u64::<LittleEndian>().unwrap(),
+            source_job_id: data.read_u64::<LittleEndian>().unwrap(),
+            header_canary: data.read_u8().unwrap(),
+            steam_id: data.read_u64::<LittleEndian>().unwrap(),
+            session_id: data.read_i32::<LittleEndian>().unwrap(),
         }
     }
 
     pub fn write_to(&self, data: &mut Cursor<Vec<u8>>) {
+        // TODO: We don't need a cursor for this
         data.write_u32::<LittleEndian>(self.msg as u32).unwrap();
         data.write_u8(self.header_size).unwrap();
         data.write_u16::<LittleEndian>(self.header_version).unwrap();
@@ -483,7 +481,7 @@ impl MessageHeader {
         // Peek the event type we received
         let emsg_raw = EMsg::parse_to_raw(data);
         let emsg = EMsg::from_raw(emsg_raw);
-        debug!("Parsing message for EMsg: {:?}", emsg);
+        trace!("Parsing message for EMsg: {:?}", emsg);
 
         // Reset the cursor again, the header needs it to be at the start
         data.set_position(original_pos);
