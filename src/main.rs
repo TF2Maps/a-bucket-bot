@@ -23,7 +23,8 @@ fn main() {
     // Start the client
     let mut client = SteamConnection::connect();
     let mut encryption_key = None;
-    let mut session_id;
+    let mut session_id = 0;
+    let mut steam_id = 0;
 
     // Loop over messages that get sent to us
     loop {
@@ -118,6 +119,8 @@ fn main() {
                 // Keep track of the session id for all future messages
                 if let &MessageHeader::MsgHdrProtoBuf(ref header) = &message.header {
                     session_id = header.proto.get_client_sessionid();
+                    steam_id = header.proto.get_steamid();
+                    println!("========================== steamid: {}", steam_id);
                 } else {
                     panic!("Unexpected header for this message");
                 }
@@ -136,6 +139,9 @@ fn main() {
                 // Start up the heartbeat so we don't get disconnected
                 let interval = response.get_out_of_game_heartbeat_seconds();
                 client.start_heartbeat(interval, session_id);
+            },
+            EMsg::ClientAccountInfo => {
+                debug!("Received account info, sending status change...");
 
                 // Set ourselves to online
                 let mut body = CMsgClientChangeStatus::new();
@@ -144,7 +150,7 @@ fn main() {
                 let mut hdr_proto = CMsgProtoBufHeader::new();
                 hdr_proto.set_jobid_source(1); // TODO: Auto-assign
                 hdr_proto.set_client_sessionid(session_id);
-                hdr_proto.set_steamid(76561197960265728);
+                hdr_proto.set_steamid(steam_id);
                 let header = MsgHdrProtoBuf {
                     msg: EMsg::ClientChangeStatus,
                     proto: hdr_proto,
@@ -154,7 +160,7 @@ fn main() {
                     body: body.write_to_bytes().unwrap()
                 };
                 client.send(message);
-            },
+            }
             EMsg::ClientLoggedOff => {
                 let mut data = CMsgClientLoggedOff::new();
                 data.merge_from_bytes(&message.body).unwrap();
