@@ -10,9 +10,5 @@ crc = "1.2"
 log = "0.3"
 log4rs = "0.3"
 toml = "0.1.27"
-
-[dependencies.boiler]
-path = "./boiler"
-
-[dependencies.boiler-generated]
-path = "./boiler-generated"
+boiler = "0.1.0"
+boiler-generated = "0.1.0"
